@@ -3,3 +3,4 @@ Two .csv files serve as input for the abstraction. Stages of the program:
 2. Convert the previous PCollection <String> to PCollection <KV <Integer, Iterable <Integer> >> and group by key (patient id)
 3. join two tables into one PCollection <String>
 4. Convert PCollection <String> to PCollection <KV <Integer, Iterable <Integer> >> without one column patient_id and group by key (patient id).
+5. Program write result PColection to CSV file

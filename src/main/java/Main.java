@@ -14,37 +14,32 @@ import org.apache.beam.sdk.values.TupleTag;
 import service.StringToKVForPatientModality;
 import service.StringToKVForPatientStatus;
 import service.TransformJoinTableToFinalResult;
+import utils.PipelineUtil;
 
 public class Main {
     // розбити клініки на групи в яких обслуговуються пацієнти з однаковими модаліті
     // як побудувати запрос в якому найти всі клініки в яких всі пацієнти мають такі ж рівні модаліті
 
     public static void main(String[] args) {
-        PipelineOptions options = PipelineOptionsFactory.fromArgs(args).create();
-        Pipeline pipeline = Pipeline.create(options);
+
+        Pipeline pipeline = PipelineUtil.createPipeline(args);
+        String pathToPatientModalityDoc = "F:\\Idea Projects\\DVTask\\PATIENT_MODALITY.csv";
+        String pathToPatientStatusDoc = "F:\\Idea Projects\\DVTask\\PATIENT_STATUS.csv";
 
         // step 1 - create 2 origin PCollection
-        PCollection<String> patientModality = pipeline.apply(
-                TextIO.read().from("F:\\Idea Projects\\DVTask\\PATIENT_MODALITY.csv"));
-
-        PCollection<String> patientStatus = pipeline.apply(
-                TextIO.read().from("F:\\Idea Projects\\DVTask\\PATIENT_STATUS.csv"));
+        PCollection<String> patientModality = PipelineUtil.readCSVFile(pipeline, pathToPatientModalityDoc);
+        PCollection<String> patientStatus = PipelineUtil.readCSVFile(pipeline, pathToPatientStatusDoc);
 
         // step 2 - create and ordering PCollection <KV<Integer, Integer>>
-        PCollection<KV<String, String>> orderingPatientModalityKV
-                = patientModality.apply(ParDo.of(new StringToKVForPatientModality()));
-
-
-        PCollection<KV<String, String>> orderingPatientStatusKV
-                = patientStatus.apply(ParDo.of(new StringToKVForPatientStatus()));
-
+        PCollection<KV<String, String>> patientModalityKV = PipelineUtil.transformToKVPCollection(patientModality, new StringToKVForPatientModality());
+        PCollection<KV<String, String>> patientStatusKV = PipelineUtil.transformToKVPCollection(patientStatus,new StringToKVForPatientStatus());
 
         // step 3 - join many to one PCollection
         final TupleTag<String> patientModalityTupleTag = new TupleTag<>();
         final TupleTag<String> patientStatusTupleTag = new TupleTag<>();
         PCollection<KV<String, CoGbkResult>> tableWithCoGbkResult
-                = KeyedPCollectionTuple.of(patientModalityTupleTag, orderingPatientModalityKV)
-                .and(patientStatusTupleTag, orderingPatientStatusKV)
+                = KeyedPCollectionTuple.of(patientModalityTupleTag, patientModalityKV)
+                .and(patientStatusTupleTag, patientStatusKV)
                 .apply(CoGroupByKey.<String>create());
 
         PCollection<String> joinTable = tableWithCoGbkResult.apply(ParDo.of(new DoFn<KV<String, CoGbkResult>, String>(){
@@ -70,7 +65,7 @@ public class Main {
                 = KeyedPCollectionTuple.of(resultTupleTag, resultTable)
                 .apply(CoGroupByKey.<String>create());
 
-        PCollection<String> resultReadyToPintTable = castTable.apply(ParDo.of(new DoFn<KV<String, CoGbkResult>, String>(){
+        PCollection<String> resultReadyToPrintTable = castTable.apply(ParDo.of(new DoFn<KV<String, CoGbkResult>, String>(){
 
             @DoFn.ProcessElement
             public void processElement (ProcessContext c){
@@ -82,8 +77,8 @@ public class Main {
                     c.output(strKey+";"+var); }
             }
         }));
-        resultReadyToPintTable.apply(TextIO.write().to("F:\\Idea Projects\\DVTask\\result.csv")
-               .withNumShards(1).withSuffix(".csv"));
+        String resultFilePath = "F:\\Idea Projects\\DVTask\\result.csv";
+        PipelineUtil.writeToCSVFile(resultReadyToPrintTable, resultFilePath);
         pipeline.run();}
 }
 
